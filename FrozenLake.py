@@ -20,9 +20,9 @@ print("Initializing quality table.")
 Q = np.zeros((env.observation_space.n, env.action_space.n))
 
 
-#################
-# Greedy policy #
-#################
+#########################
+# Epsilon-greedy policy #
+#########################
 
 epsilon = 1
 
