@@ -25,7 +25,7 @@ class MemoryBank():
         self.memories = []
         self.memory_probs = []
 
-        self.memory_batch_n = 100
+        self.memory_batch_n = 1000
         self.memory_threshold = self.memory_batch_n*20
         self.memory_size = self.memory_batch_n*1000
 
@@ -42,7 +42,7 @@ class MemoryBank():
         qualities, target_qualities = self.brain.get_qualities(list(map(list, zip(*self.memories))))
         usefulness = abs(qualities - target_qualities)
         usefulness += max(usefulness)/100  # allow a non-zero chance for each item to be selected
-        usefulness = usefulness.detach().numpy()
+        usefulness = usefulness.cpu().detach().numpy()
         self.memory_probs = usefulness/sum(usefulness)
 
     def forget(self):
@@ -66,13 +66,14 @@ class MemoryBank():
 
 class QualityNet(nn.Module):
     '''Takes a state and returns qualities for each action.'''
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
         self.layer_1 = nn.Linear(128, 256)
         self.layer_2 = nn.Linear(256, 6)
+        self.device = device
 
     def forward(self, state):
-        x = torch.Tensor(state)
+        x = torch.Tensor(state).to(self.device)
         x = F.relu(self.layer_1(x))
         x = self.layer_2(x)
         return x
@@ -80,8 +81,9 @@ class QualityNet(nn.Module):
 
 class DDQN():
     '''Determines the quality of an action-state pair. Can learn from experience.'''
-    def __init__(self):
-        self.Q = QualityNet()
+    def __init__(self, device):
+        self.device = device
+        self.Q = QualityNet(self.device).to(self.device)
         self.target_Q = copy.deepcopy(self.Q)
         self.memory = MemoryBank(self)
 
@@ -100,10 +102,10 @@ class DDQN():
         state_batch, action_batch, reward_batch, new_state_batch, game_over_batch = memory_batch
         quality_batch = self.Q(state_batch)[list(range(len(action_batch))), action_batch]
 
-        game_not_over_batch = torch.Tensor([1-i for i in game_over_batch])
+        game_not_over_batch = torch.Tensor([1-i for i in game_over_batch]).to(self.device)
         DDQN_action_batch = torch.max(self.Q(new_state_batch), dim=1)[1]
         target_next_Q_batch = self.target_Q(new_state_batch)[list(range(len(DDQN_action_batch))), DDQN_action_batch]
-        target_Q_batch = torch.Tensor(reward_batch) + game_not_over_batch*self.gamma*target_next_Q_batch
+        target_Q_batch = torch.Tensor(reward_batch).to(self.device) + game_not_over_batch*self.gamma*target_next_Q_batch
 
         return quality_batch, target_Q_batch
 
@@ -135,12 +137,16 @@ class Agent():
                 return env
             return _make
 
-        # def check_cuda():
-            # cuda.init()
-            # print(f"Using GPU {cuda.Device(torch.cuda.current_device()).name()}")
-            # return torch.cuda.is_available()
+        def get_device():
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            if device != "cpu":
+                cuda.init()
+                print(f"Using GPU {cuda.Device(torch.cuda.current_device()).name()}.")
+            else:
+                print("Using CPU.")
+            return device
 
-        # check_cuda()
+        self.device = get_device()
 
         self.n_processes = 8
         self.n_frames_between_training = 1000
@@ -149,7 +155,7 @@ class Agent():
         self.n_actions = self.envs.action_space.n
         self.states = self.envs.reset()
 
-        self.brain = DDQN()
+        self.brain = DDQN(self.device)
 
         self.training_history = []
         self.game_frames = []
