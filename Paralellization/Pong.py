@@ -202,10 +202,10 @@ class Agent():
         display(display_animation(anim, default_mode='once'))
 
 
-def __main__():
+if __name__ == "__main__":
     '''Either train a new agent or load a pre-trained agent.'''
-    # pretrained_weights = None
-    pretrained_weights = "saved_pong_weights.data"
+    pretrained_weights = None
+    # pretrained_weights = "saved_pong_weights.data"
 
     agent = Agent()
 
